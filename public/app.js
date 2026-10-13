@@ -179,7 +179,7 @@ function onMessage(msg) {
       members.set(msg.member.id, msg.member);
       if (msg.member.id === me.id) members.forEach(renderMember); else renderMember(msg.member);
       checkGeofences(msg.member, prev);
-      if (msg.member.id === selectedId) { renderSelected(); if (following && hasLoc(msg.member)) followSelected(); }
+      if (msg.member.id === selectedId) { updateStreetView(); renderSelected(); if (following && hasLoc(msg.member)) followSelected(); }
       renderPeople();
       break;
     }
@@ -226,6 +226,7 @@ function renderMember(m) {
 
 function select(id) {
   selectedId = id; store.set('selected', id);
+  updateStreetView(true);
   members.forEach(renderMember);
   renderSelected();
   if (id) { setFollowing(true); followSelected(true); }
@@ -597,6 +598,34 @@ function setupBackground() {
     ? '3. When OwnTracks asks for location, choose <b>Allow While Using</b>, then later <b>Change to Always Allow</b> (or Settings → OwnTracks → Location → <b>Always</b>). In OwnTracks, tap the mode icon at the top and pick <b>Move</b>.'
     : '3. When OwnTracks asks for location, choose <b>Allow all the time</b>. If asked about battery optimisation, choose <b>Allow</b> / <b>Don\'t optimise</b> so it keeps running.';
 }
+
+// ---------- Street View picture-in-picture ----------
+// Uses Google's keyless Street View embed; it points the camera the way the person is heading.
+let svOn = store.get('sv', true), svShown = null; // svShown: { id, lat, lng }
+const svPrev = new Map(); // id -> last position used to work out heading
+function bearing(a, b) {
+  const r = Math.PI / 180, y = Math.sin((b.lng - a.lng) * r) * Math.cos(b.lat * r);
+  const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lng - a.lng) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+function updateStreetView(force) {
+  const m = members.get(selectedId);
+  $('svBtn').classList.toggle('on', svOn);
+  if (!svOn || !hasLoc(m)) { $('svBox').classList.add('hidden'); svShown = null; return; }
+  $('svBox').classList.remove('hidden');
+  $('svName').textContent = m.name;
+  // Only reload the view when they've moved a bit, so it doesn't flicker every 10 seconds.
+  if (!force && svShown && svShown.id === m.id && distM(svShown, m) < 25) return;
+  const prev = svPrev.get(m.id);
+  const heading = prev && distM(prev, m) > 10 ? Math.round(bearing(prev, m)) : 0;
+  svPrev.set(m.id, { lat: m.lat, lng: m.lng });
+  svShown = { id: m.id, lat: m.lat, lng: m.lng };
+  $('svFrame').src = `https://maps.google.com/maps?layer=c&cbll=${m.lat},${m.lng}&cbp=11,${heading},0,0,0&output=svembed`;
+  $('svOpen').href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${m.lat},${m.lng}&heading=${heading}`;
+}
+$('svBtn').onclick = () => { svOn = !svOn; store.set('sv', svOn); updateStreetView(true); };
+$('svClose').onclick = () => { svOn = false; store.set('sv', false); updateStreetView(); };
+$('svSize').onclick = () => $('svBox').classList.toggle('big');
 
 // ---------- boot ----------
 if (me.name && me.code) startApp(); else showJoin();

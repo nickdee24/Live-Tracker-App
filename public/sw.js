@@ -1,5 +1,5 @@
 // Service worker: offline shell + push notifications for emergency pings.
-const CACHE = 'tracker-v4';
+const CACHE = 'tracker-v5';
 const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/icon.svg', '/manifest.webmanifest', '/icon-192.png', '/vendor/leaflet.js', '/vendor/leaflet.css'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });

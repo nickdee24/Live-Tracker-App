@@ -43,6 +43,17 @@
 
     <div id="toasts"></div>
 
+    <!-- Street View picture-in-picture -->
+    <div id="svBox" class="hidden">
+      <iframe id="svFrame" title="Street View" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+      <div class="sv-bar">
+        <span id="svName" class="grow"></span>
+        <button id="svSize" title="Bigger / smaller">⤢</button>
+        <a id="svOpen" target="_blank" rel="noopener" title="Open in Google Maps">↗</a>
+        <button id="svClose" title="Hide">✕</button>
+      </div>
+    </div>
+
     <!-- Bottom info bar -->
     <footer id="infobar">
       <div id="selected" class="hidden">
@@ -52,6 +63,7 @@
             <div class="name" id="selName"></div>
             <div class="addr" id="selAddr"></div>
           </div>
+          <button id="svBtn" class="small" title="Street View">👁</button>
           <button id="followBtn" class="small" title="Follow on map">🎯 Following</button>
         </div>
         <div class="stats">
@@ -104,7 +116,7 @@
       <button id="renameBtn">✏️ Change my name</button>
       <button id="leaveBtn" class="danger">🚪 Leave group (opt out completely)</button>
       <p class="muted small" id="platformNote"></p>
-      <p class="muted small">App version 4</p>
+      <p class="muted small">App version 5</p>
     </div>
 
     <!-- Background tracking setup -->
