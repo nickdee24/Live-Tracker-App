@@ -215,6 +215,7 @@ function onMessage(msg) {
       renderPeople();
       break;
     case 'ping': showPing(msg.from, msg.text, msg.urgent); break;
+    case 'emote': showEmote(msg); break;
     case 'notice':
       if (msg.fromId !== me.id) { toast(`${msg.title}${msg.body ? ' · ' + msg.body : ''}`, 10000); notify(msg.title, msg.body, 'notice'); }
       break;
@@ -290,7 +291,6 @@ function renderSelected() {
   $('selName').textContent = m.name + (m.id === me.id ? ' (you)' : '');
   const tl = tripText(m, true);
   $('selTrip').textContent = tl || ''; $('selTrip').classList.toggle('hidden', !tl);
-  drawTripDest(m);
   if (!m.sharing) {
     $('selAddr').textContent = 'Not sharing location';
     $('selDist').textContent = ''; $('selFromYou').textContent = ''; $('selSpeed').textContent = ''; $('selBattery').textContent = '';
@@ -661,19 +661,42 @@ function setupBackground() {
 }
 
 // ---------- shared trips ----------
-let destMarker = null, destLine = null, destFor = null;
-function drawTripDest(m) {
-  const t = activeTrip(m);
-  const key = t ? `${m.id}|${t.destLat}|${t.destLng}|${m.lat}|${m.lng}` : null;
-  if (key === destFor) return;
-  destFor = key;
-  if (destMarker) { destMarker.remove(); destLine.remove(); destMarker = destLine = null; }
-  if (!t || !isFinite(t.destLat) || !hasLoc(m)) return;
-  destMarker = L.marker([t.destLat, t.destLng], { icon: L.divIcon({ className: 'home-marker', html: '🏁', iconSize: [28, 28], iconAnchor: [6, 26] }) })
-    .bindTooltip(t.destName).addTo(map);
-  destLine = L.polyline([[m.lat, m.lng], [t.destLat, t.destLng]], { color: '#1f6feb', weight: 3, dashArray: '6 8', opacity: 0.7 }).addTo(map);
+// Each driver's road route as a green line (the part still to drive) and a 🏁 at the destination.
+const tripLayers = new Map();   // member id -> { key, layer }
+function remainingRoute(m, route) {
+  if (!hasLoc(m)) return route;
+  let best = 0, bestD = Infinity;
+  route.forEach((p, i) => { const d = (p[0] - m.lat) ** 2 + ((p[1] - m.lng) * Math.cos(m.lat * Math.PI / 180)) ** 2; if (d < bestD) { bestD = d; best = i; } });
+  return [[m.lat, m.lng], ...route.slice(best + 1)];
+}
+function drawTrips() {
+  if (!map) return;
+  const seen = new Set();
+  for (const m of members.values()) {
+    const t = activeTrip(m);
+    if (!t || !isFinite(t.destLat)) continue;
+    seen.add(m.id);
+    const key = `${t.destLat}|${t.destLng}|${t.route ? t.route.length + '|' + t.route[0] : ''}|${m.lat}|${m.lng}`;
+    const old = tripLayers.get(m.id);
+    if (old && old.key === key) continue;
+    if (old) old.layer.remove();
+    const layer = L.layerGroup();
+    if (t.route) {
+      const pts = remainingRoute(m, t.route);
+      L.polyline(pts, { color: '#0b6b2e', weight: 9, opacity: 0.5, interactive: false }).addTo(layer);
+      L.polyline(pts, { color: '#22c55e', weight: 5, opacity: 0.95, interactive: false }).addTo(layer);
+    } else if (hasLoc(m)) {
+      L.polyline([[m.lat, m.lng], [t.destLat, t.destLng]], { color: '#22c55e', weight: 3, dashArray: '6 8', opacity: 0.8, interactive: false }).addTo(layer);
+    }
+    L.marker([t.destLat, t.destLng], { icon: L.divIcon({ className: 'home-marker', html: '🏁', iconSize: [28, 28], iconAnchor: [6, 26] }) })
+      .bindTooltip(`${m.name} → ${t.destName}`).addTo(layer);
+    layer.addTo(map);
+    tripLayers.set(m.id, { key, layer });
+  }
+  for (const [id, v] of tripLayers) if (!seen.has(id)) { v.layer.remove(); tripLayers.delete(id); }
 }
 function renderTrips() {
+  drawTrips();
   const list = [...members.values()].filter(m => m.id !== me.id && activeTrip(m));
   $('tripBanner').innerHTML = list.map(m => `<button class="trip-chip" data-id="${esc(m.id)}"><b>${esc(m.name)}</b> ${esc(tripText(m, true).replace('🚗 Driving to', '→'))}</button>`).join('');
   $('tripBanner').classList.toggle('hidden', !list.length);
@@ -718,3 +741,34 @@ if (SIMPLE) {
 
 // ---------- boot ----------
 if (me.name && me.code) startApp(); else showJoin();
+
+// ---------- emotes: a big emoji floats up on everyone's screen ----------
+const EMOTES = ['😊', '❤️', '😘', '🥰', '😂', '👍', '👋', '🎉', '🙏', '😢', '🚗', '🏠'];
+$('emoteTray').innerHTML = EMOTES.map(e => `<button data-e="${e}">${e}</button>`).join('');
+$('emoteBtn').onclick = () => $('emoteTray').classList.toggle('hidden');
+$('emoteTray').onclick = e => {
+  const b = e.target.closest('[data-e]'); if (!b) return;
+  if (!ws || ws.readyState !== 1) return toast('Not connected right now, try again in a moment.');
+  send({ t: 'emote', e: b.dataset.e });
+  $('emoteTray').classList.add('hidden');
+};
+function showEmote({ fromId, name, e }) {
+  const layer = $('emoteLayer');
+  for (let i = 0; i < 7; i++) {
+    const el = document.createElement('div');
+    el.className = 'emote-float';
+    el.textContent = e;
+    el.style.left = (10 + Math.random() * 80) + '%';
+    el.style.fontSize = (i === 0 ? 96 : 36 + Math.random() * 30) + 'px';
+    el.style.animationDelay = (i === 0 ? 0 : Math.random() * 0.8) + 's';
+    if (i === 0) el.style.left = '50%';
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+  const label = document.createElement('div');
+  label.className = 'emote-label';
+  label.textContent = `${fromId === me.id ? 'You' : name} sent ${e}`;
+  layer.appendChild(label);
+  setTimeout(() => label.remove(), 3500);
+  if (fromId !== me.id && navigator.vibrate) navigator.vibrate(80);
+}

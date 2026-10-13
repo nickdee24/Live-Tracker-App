@@ -150,6 +150,7 @@ const publicMember = m => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, acc
   address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null, bgAt: m.bgAt || null, trip: m.trip || null });
 function isOnline(id) { for (const s of sockets.values()) if (s.id === id) return true; return false; }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+const EMOTES = ['😊', '❤️', '😘', '🥰', '😂', '👍', '👋', '🎉', '🙏', '😢', '🚗', '🏠'];
 function broadcast(code, msg) { for (const [ws, s] of sockets) if (s.code === code) send(ws, msg); }
 function broadcastAll(msg) { for (const ws of sockets.keys()) send(ws, msg); }
 function socketsFor(id) { return [...sockets].filter(([, s]) => s.id === id).map(([ws]) => ws); }
@@ -227,6 +228,12 @@ function announce(code, me, title, body) {
 }
 const clock = ms => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
 
+function cleanRoute(r) {
+  if (!Array.isArray(r) || r.length < 2) return null;
+  const pts = r.slice(0, 600).map(p => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)])
+    .filter(([a, b]) => isFinite(a) && isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180);
+  return pts.length >= 2 ? pts : null;
+}
 function setTrip(code, me, trip) {
   if (trip === undefined) return;
   if (trip === null) { if (me.trip) { me.trip = null; broadcast(code, { t: 'member', member: publicMember(me) }); } return; }
@@ -237,7 +244,9 @@ function setTrip(code, me, trip) {
   };
   if (!isFinite(t.eta)) return;
   const starting = !me.trip || me.trip.destName !== t.destName;
-  me.trip = { ...t, startedAt: starting ? Date.now() : me.trip.startedAt };
+  // The road route as [[lat, lng], …]. NaviGO sends it once per route (and again after a reroute); keep the last one.
+  const route = cleanRoute(trip.route);
+  me.trip = { ...t, route: route || (starting ? null : me.trip.route || null), startedAt: starting ? Date.now() : me.trip.startedAt };
   if (starting) announce(code, me, `🚗 ${me.name} is driving to ${t.destName}`, `Arriving about ${clock(t.eta)}`);
   broadcast(code, { t: 'member', member: publicMember(me) });
 }
@@ -302,7 +311,7 @@ async function handleAppApi(req, res, action) {
     const since = +b.since || 0;
     const messages = (m.inbox || []).filter(x => x.at > since);
     save();
-    return json(res, 200, { now: Date.now(), home, me: publicMember(m),
+    return json(res, 200, { now: Date.now(), home, me: publicMember(m), needRoute: !!(m.trip && !m.trip.route),
       members: Object.values(g.members).filter(x => x.id !== m.id).map(publicMember), messages });
   }
   if (action === 'message') {
@@ -355,6 +364,11 @@ function handle(ws, msg) {
     if (!target) return;
     const delivered = deliverMessage(me, target, msg.text);
     send(ws, { t: 'pinged', to: target.name, delivered });
+  } else if (msg.t === 'emote') {
+    // A big emoji that floats up on everyone's screen in the group. Only known emojis, at most one every 1.5 s.
+    if (!EMOTES.includes(msg.e) || Date.now() - (me.emoteAt || 0) < 1500) return;
+    me.emoteAt = Date.now();
+    broadcast(s.code, { t: 'emote', fromId: me.id, name: me.name, e: msg.e });
   } else if (msg.t === 'pushsub') {
     if (!msg.sub || !msg.sub.endpoint) return;
     const list = db.subs[me.id] ||= [];
