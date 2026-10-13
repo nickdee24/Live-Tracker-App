@@ -118,7 +118,7 @@ All `POST`, JSON body. After joining, send `code`, `id` and `token` with every c
 | Endpoint | Body | Returns |
 |---|---|---|
 | `/api/app/join` | `code`, `name` (same name = same person as on the web app) | `id`, `token`, `home` |
-| `/api/app/update` | optional `visible` (app on screen: no web push while true), `lat`, `lng`, `acc`, `speed` (m/s), `battery` (0–100), `charging`, `sharing`; `trip`: `{destName, destLat, destLng, eta (epoch ms), remainingM}` to start/update, `null` to cancel; `since` (ms) | `members` (everyone else, with location, speed and trip), `messages` sent to you since `since` (`from`, `text`, `urgent`, `emote`: true when `text` is an emote, `quiet`: true when one of your apps was open so no notification is needed), `needRoute`, `now` |
+| `/api/app/update` | optional `visible` (app on screen: no web push while true), `inCall` (shows "In a call"), `lat`, `lng`, `acc`, `speed` (m/s), `battery` (0–100), `charging`, `sharing`; `trip`: `{destName, destLat, destLng, eta (epoch ms), remainingM}` to start/update, `null` to cancel; `since` (ms) | `members` (everyone else, with location, speed and trip), `messages` sent to you since `since` (`from`, `text`, `urgent`, `emote`: true when `text` is an emote, `quiet`: true when one of your apps was open so no notification is needed), `needRoute`, `now` |
 | `/api/app/message` | `to` (member id or `*` for everyone), `text`, optional `urgent` | `delivered` |
 | `/api/app/trip-end` | `arrived` (true sends "has arrived" to everyone) | `ok` |
 

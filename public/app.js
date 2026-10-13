@@ -236,7 +236,7 @@ function renderAll() { members.forEach(renderMember); renderSelected(); renderPe
 function markerHtml(m) {
   const away = awayText(m), fy = fromYou(m);
   const sp = speedText(m), tt = tripText(m);
-  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${tt ? `<small>${esc(tt)}</small>` : ''}${sp ? `<small>${esc(sp)}</small>` : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
+  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${m.inCall ? '<span class="in-call">📞 In a call</span>' : ''}${tt ? `<small>${esc(tt)}</small>` : ''}${sp ? `<small>${esc(sp)}</small>` : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
           <div class="pin" style="background:${colorFor(m.id)}">${esc(initial(m.name))}</div>`;
 }
 function renderMember(m) {
@@ -289,6 +289,7 @@ function renderSelected() {
   $('selAvatar').textContent = initial(m.name);
   $('selAvatar').style.background = colorFor(m.id);
   $('selName').textContent = m.name + (m.id === me.id ? ' (you)' : '');
+  $('selCall').textContent = m.inCall ? '📞 In a call' : ''; $('selCall').classList.toggle('hidden', !m.inCall);
   const tl = tripText(m, true);
   $('selTrip').textContent = tl || ''; $('selTrip').classList.toggle('hidden', !tl);
   if (!m.sharing) {

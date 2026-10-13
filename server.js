@@ -147,7 +147,9 @@ function newCode() {
   return c;
 }
 const publicMember = m => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, acc: m.acc, battery: m.battery, charging: m.charging,
-  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null, bgAt: m.bgAt || null, trip: m.trip || null });
+  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null, bgAt: m.bgAt || null, trip: m.trip || null,
+  // Only NaviGO (a real phone app) can see calls; ignore it if NaviGO has gone quiet for a minute.
+  inCall: !!m.inCall && !!m.appSeen && Date.now() - m.appSeen < 60000 });
 function isOnline(id) { for (const s of sockets.values()) if (s.id === id) return true; return false; }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 const EMOTES = ['😊', '❤️', '😘', '🥰', '😂', '👍', '👋', '🎉', '🙏', '😢', '🚗', '🏠'];
@@ -303,6 +305,7 @@ async function handleAppApi(req, res, action) {
   const { code, g, m } = a;
   m.appSeen = Date.now();
   if (b.visible != null) m.appVisibleAt = b.visible ? Date.now() : 0;
+  if (b.inCall != null) m.inCall = !!b.inCall;
   if (action === 'update') {
     if (b.sharing != null && !!b.sharing !== m.sharing) {
       m.sharing = !!b.sharing;
