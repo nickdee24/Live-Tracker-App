@@ -97,10 +97,10 @@ details input { margin-bottom: 6px; font-size: 12px; }
 .bg-cta { width: 100%; }
 
 /* Street View PiP */
-#svBox { position: absolute; z-index: 1050; right: 10px; top: calc(env(safe-area-inset-top) + 56px); width: 180px; border-radius: 12px; overflow: hidden;
+#svBox { position: absolute; z-index: 1050; right: 10px; top: calc(env(safe-area-inset-top) + 56px); width: 240px; border-radius: 12px; overflow: hidden;
   background: #000; box-shadow: var(--shadow); transition: width .2s; }
 #svBox.big { width: min(92vw, 420px); }
-#svFrame { display: block; width: 100%; aspect-ratio: 4 / 3; border: 0; background: #222; }
+#svFrame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #222; }
 #svBox .sv-bar { display: flex; align-items: center; gap: 2px; background: rgba(0,0,0,.75); color: #fff; font-size: 12px; padding: 2px 4px 2px 8px; }
 #svBox .sv-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #svBox .sv-bar button, #svBox .sv-bar a { background: none; border: 0; color: #fff; padding: 4px 6px; font-size: 14px; text-decoration: none; }
