@@ -369,6 +369,12 @@ function handle(ws, msg) {
     if (!EMOTES.includes(msg.e) || Date.now() - (me.emoteAt || 0) < 1500) return;
     me.emoteAt = Date.now();
     broadcast(s.code, { t: 'emote', fromId: me.id, name: me.name, e: msg.e });
+    // Apps like NaviGO don't hold a socket; they pick emotes up from their inbox on the next update.
+    for (const m of Object.values(g.members)) {
+      if (m.id === me.id || !m.appSeen || Date.now() - m.appSeen > 10 * 60000) continue;
+      m.inbox = (m.inbox || []).filter(x => Date.now() - x.at < 10 * 60000).slice(-19);
+      m.inbox.push({ from: me.name, fromId: me.id, text: msg.e, emote: true, urgent: false, at: Date.now() });
+    }
   } else if (msg.t === 'pushsub') {
     if (!msg.sub || !msg.sub.endpoint) return;
     const list = db.subs[me.id] ||= [];
