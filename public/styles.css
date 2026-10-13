@@ -89,3 +89,8 @@ label.check input { width: auto; margin: 0; }
 .ping-card button { margin-top: 20px; font-size: 18px; padding: 14px 24px; background: #fff; color: var(--danger); border: 0; }
 .leaflet-top { top: calc(env(safe-area-inset-top) + 52px); }
 .leaflet-bottom { bottom: var(--infobar-h, 0px); }
+a.button { display: block; text-align: center; text-decoration: none; font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 10px; padding: 10px 14px; }
+a.button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+ol.steps { padding: 0; list-style: none; display: grid; gap: 10px; }
+ol.steps li { display: block; border: 0; padding: 0; cursor: default; }
+details input { margin-bottom: 6px; font-size: 12px; }

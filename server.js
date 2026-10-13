@@ -147,12 +147,53 @@ function newCode() {
   return c;
 }
 const publicMember = m => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, acc: m.acc, battery: m.battery, charging: m.charging,
-  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id) });
+  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null });
 function isOnline(id) { for (const s of sockets.values()) if (s.id === id) return true; return false; }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(code, msg) { for (const [ws, s] of sockets) if (s.code === code) send(ws, msg); }
 function broadcastAll(msg) { for (const ws of sockets.keys()) send(ws, msg); }
 function socketsFor(id) { return [...sockets].filter(([, s]) => s.id === id).map(([ws]) => ws); }
+
+function updateLocation(code, me, { lat, lng, acc, battery, charging }) {
+  if (!me.sharing) return false;
+  lat = +lat; lng = +lng;
+  if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
+  const moved = me.lat == null ? Infinity : distance(me.lat, me.lng, lat, lng);
+  Object.assign(me, { lat, lng, acc: +acc || null, updatedAt: Date.now() });
+  me.battery = battery != null && isFinite(battery) && battery >= 0 ? battery : null;
+  me.charging = me.battery != null ? !!charging : null;
+  broadcast(code, { t: 'member', member: publicMember(me) });
+  save();
+  if (moved > 20 || !me.address) {
+    reverseGeocode(lat, lng).then(addr => {
+      if (addr && addr !== me.address) { me.address = addr; broadcast(code, { t: 'member', member: publicMember(me) }); save(); }
+    });
+  }
+  return true;
+}
+
+// OwnTracks (free iPhone/Android app) posts here in HTTP mode, so location keeps flowing when our app is closed.
+// URL: /ot/<code>/<memberId>/<token>?name=<name>
+function handleOwnTracks(req, res, [code, id, token], name) {
+  let body = '';
+  req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
+  req.on('end', () => {
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('[]');
+    let msg; try { msg = JSON.parse(body); } catch { return; }
+    if (!msg || msg._type !== 'location' || !validCode(code)) return;
+    const g = db.groups[code] ||= { created: Date.now(), members: {} };
+    let m = g.members[id];
+    if (!m) {
+      // Server storage was wiped (free hosting); trust the link and recreate the person.
+      if (!name || !token) return;
+      m = g.members[id] = { id, name: String(name).slice(0, 30), sharing: true, token };
+    }
+    if (!m.token || m.token !== token) return;
+    // OwnTracks battery status: 2 = charging, 3 = full.
+    m.source = 'background';
+    updateLocation(code, m, { lat: msg.lat, lng: msg.lon, acc: msg.acc, battery: msg.batt, charging: msg.bs === 2 || msg.bs === 3 });
+  });
+}
 
 function handle(ws, msg) {
   const s = sockets.get(ws);
@@ -167,9 +208,11 @@ function handle(ws, msg) {
     const g = db.groups[code];
     const m = g.members[id] ||= { id, sharing: !!msg.sharing };
     m.name = name;
+    // Reuse the token the phone remembers so its background-tracking link survives a storage wipe.
+    m.token ||= /^[a-f0-9]{24}$/.test(msg.token || '') ? msg.token : crypto.randomBytes(12).toString('hex');
     s.id = id; s.code = code;
     save();
-    send(ws, { t: 'state', code, home, vapidKey: vapid.publicKey, members: Object.values(g.members).map(publicMember) });
+    send(ws, { t: 'state', code, home, vapidKey: vapid.publicKey, token: m.token, members: Object.values(g.members).map(publicMember) });
     broadcast(code, { t: 'member', member: publicMember(m) });
     return;
   }
@@ -179,20 +222,9 @@ function handle(ws, msg) {
   if (!me) return;
 
   if (msg.t === 'loc') {
-    if (!me.sharing) return;
-    const lat = +msg.lat, lng = +msg.lng;
-    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
-    const moved = me.lat == null ? Infinity : distance(me.lat, me.lng, lat, lng);
-    Object.assign(me, { lat, lng, acc: +msg.acc || null, updatedAt: Date.now() });
-    if (msg.battery != null) { me.battery = Math.round(+msg.battery * 100); me.charging = !!msg.charging; }
-    else { me.battery = null; me.charging = null; }
-    broadcast(s.code, { t: 'member', member: publicMember(me) });
-    save();
-    if (moved > 20 || !me.address) {
-      reverseGeocode(lat, lng).then(addr => {
-        if (addr && addr !== me.address) { me.address = addr; broadcast(s.code, { t: 'member', member: publicMember(me) }); save(); }
-      });
-    }
+    me.source = 'app';
+    updateLocation(s.code, me, { lat: msg.lat, lng: msg.lng, acc: msg.acc,
+      battery: msg.battery != null ? Math.round(+msg.battery * 100) : null, charging: msg.charging });
   } else if (msg.t === 'sharing') {
     me.sharing = !!msg.on;
     if (!me.sharing) { me.lat = me.lng = me.acc = me.address = me.battery = null; me.updatedAt = Date.now(); }
@@ -227,6 +259,8 @@ function json(res, code, body) { res.writeHead(code, { 'Content-Type': 'applicat
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  const ot = url.pathname.match(/^\/ot\/([A-Z0-9]{6})\/([\w-]{1,64})\/([a-f0-9]{24})$/);
+  if (ot && req.method === 'POST') return handleOwnTracks(req, res, ot.slice(1), url.searchParams.get('name'));
   if (req.method === 'POST' && url.pathname === '/api/groups') {
     const code = newCode();
     db.groups[code] = { created: Date.now(), members: {} };

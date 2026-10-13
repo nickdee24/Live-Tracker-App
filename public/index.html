@@ -96,11 +96,32 @@
     <!-- Menu -->
     <div id="menuPanel" class="panel hidden">
       <div class="panel-head"><h2>Settings</h2><button class="close" data-close="menuPanel">✕</button></div>
+      <button id="bgBtn" class="primary">📡 Keep sharing when the app is closed</button>
       <button id="notifyBtn">🔔 Enable notifications &amp; background pings</button>
       <button id="installBtn" class="hidden">📲 Install app</button>
       <button id="renameBtn">✏️ Change my name</button>
       <button id="leaveBtn" class="danger">🚪 Leave group (opt out completely)</button>
       <p class="muted small" id="platformNote"></p>
+    </div>
+
+    <!-- Background tracking setup -->
+    <div id="bgPanel" class="panel hidden">
+      <div class="panel-head"><h2>Share when the app is closed</h2><button class="close" data-close="bgPanel">✕</button></div>
+      <p class="small">Phones stop web apps from using location in the background. The free <b>OwnTracks</b> app can keep
+        sending your location to this tracker when this app is closed. Do this on the phone being tracked.</p>
+      <ol class="steps">
+        <li><a id="otStore" class="button" target="_blank" rel="noopener">1. Install OwnTracks (free)</a></li>
+        <li><a id="otConnect" class="button primary">2. Connect OwnTracks to this tracker</a>
+          <div class="muted small">Tap this after installing, and choose to open in OwnTracks.</div></li>
+        <li id="otAlways" class="small"></li>
+      </ol>
+      <details class="small"><summary>Connect button didn't work?</summary>
+        <p>In OwnTracks open Settings → Connection: set Mode to <b>HTTP</b> and paste this as the URL:</p>
+        <input id="otUrl" readonly onclick="this.select()">
+        <button id="otCopy" class="small">Copy URL</button>
+      </details>
+      <p class="muted small">Background updates come every 30 seconds or so while moving, and less often when still, to save battery.
+        Stop sharing in this app turns them off too.</p>
     </div>
 
     <!-- Incoming ping -->

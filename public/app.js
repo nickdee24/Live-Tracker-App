@@ -18,6 +18,7 @@ const me = {
   name: store.get('name', ''),
   code: store.get('code', ''),
   sharing: store.get('sharing', true),
+  token: store.get('token', ''),
 };
 store.set('id', me.id);
 
@@ -130,7 +131,7 @@ function connect() {
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onopen = () => {
     wsRetry = 0; $('conn').className = 'dot on';
-    send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing });
+    send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing, token: me.token });
   };
   ws.onclose = () => {
     $('conn').className = 'dot off';
@@ -149,6 +150,7 @@ function onMessage(msg) {
       break;
     case 'state':
       home = msg.home; vapidKey = msg.vapidKey;
+      if (msg.token) { me.token = msg.token; store.set('token', msg.token); }
       drawHome();
       members.clear();
       msg.members.forEach(m => members.set(m.id, m));
@@ -255,7 +257,9 @@ function renderSelected() {
     $('selDist').textContent = away ? `📏 ${m.name} is ${away.dist} from ${home.postcode} · ≈${away.walk}` : '';
     $('selBattery').textContent = m.battery != null ? `${m.charging ? '⚡' : '🔋'} ${m.battery}%${m.charging ? ' charging' : ''}` : '🔋 battery n/a';
   }
-  $('selUpdated').textContent = `🕒 Updated ${fmtAgo(m.updatedAt)}${m.online ? '' : ' · app closed'}`;
+  const via = !m.sharing ? '' : m.source === 'background' && !m.online ? ' · background tracking'
+    : !m.online && hasLoc(m) ? ' · app closed, last known spot' : '';
+  $('selUpdated').textContent = `🕒 Updated ${fmtAgo(m.updatedAt)}${via}`;
   $('pingBtn').classList.toggle('hidden', m.id === me.id);
   $('pingBtn').textContent = `📳 Ping ${m.name} (emergency vibrate)`;
 }
@@ -500,12 +504,14 @@ function checkGeofences(m, prev) {
 
 // ---------- top bar & panels ----------
 function togglePanel(id) {
-  ['peoplePanel', 'alertsPanel', 'menuPanel'].forEach(p => { if (p !== id) $(p).classList.add('hidden'); });
+  ['peoplePanel', 'alertsPanel', 'menuPanel', 'bgPanel'].forEach(p => { if (p !== id) $(p).classList.add('hidden'); });
   $(id).classList.toggle('hidden');
 }
 $('peopleBtn').onclick = () => togglePanel('peoplePanel');
 $('alertsBtn').onclick = () => togglePanel('alertsPanel');
 $('menuBtn').onclick = () => togglePanel('menuPanel');
+$('bgBtn').onclick = () => { setupBackground(); togglePanel('bgPanel'); };
+$('otCopy').onclick = () => { navigator.clipboard?.writeText($('otUrl').value).then(() => toast('URL copied.')).catch(() => {}); };
 document.querySelectorAll('[data-close]').forEach(b => (b.onclick = () => $(b.dataset.close).classList.add('hidden')));
 $('followBtn').onclick = () => { setFollowing(!following); if (following) followSelected(true); };
 $('codeBtn').onclick = async () => {
@@ -515,7 +521,7 @@ $('codeBtn').onclick = async () => {
 };
 $('renameBtn').onclick = () => {
   const n = prompt('Your name', me.name);
-  if (n && n.trim()) { me.name = n.trim().slice(0, 30); store.set('name', me.name); send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing }); }
+  if (n && n.trim()) { me.name = n.trim().slice(0, 30); store.set('name', me.name); send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing, token: me.token }); }
 };
 $('leaveBtn').onclick = () => {
   if (!confirm('Leave this group? You will stop sharing and disappear from everyone\'s map.')) return;
@@ -544,6 +550,23 @@ function setPlatformNote() {
   $('platformNote').textContent = ios
     ? 'iPhone: Safari does not allow vibration or battery level, and stops sending location when the app is in the background. Add this app to your Home Screen and enable notifications so emergency pings still alert you.'
     : 'Location is sent while the app is open. Browsers pause it when the app is in the background or the screen is off; turn on "Keep screen awake" for continuous tracking.';
+}
+
+// ---------- background tracking via OwnTracks ----------
+function setupBackground() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const url = `${location.origin}/ot/${me.code}/${encodeURIComponent(me.id)}/${me.token}?name=${encodeURIComponent(me.name)}`;
+  const config = {
+    _type: 'configuration', mode: 3, url, auth: false, monitoring: 2, locatorInterval: 30, locatorDisplacement: 10,
+    moveModeLocatorInterval: 30, pubExtendedData: true, tid: me.name.slice(0, 2).toUpperCase(), deviceId: 'phone',
+  };
+  $('otUrl').value = url;
+  $('otConnect').href = 'owntracks:///config?inline=' + encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(config)))));
+  $('otStore').href = ios ? 'https://apps.apple.com/app/owntracks/id692424691'
+    : 'https://play.google.com/store/apps/details?id=org.owntracks.android';
+  $('otAlways').innerHTML = ios
+    ? '3. When OwnTracks asks for location, choose <b>Allow While Using</b>, then later <b>Change to Always Allow</b> (or Settings → OwnTracks → Location → <b>Always</b>). In OwnTracks, tap the mode icon at the top and pick <b>Move</b>.'
+    : '3. When OwnTracks asks for location, choose <b>Allow all the time</b>. If asked about battery optimisation, choose <b>Allow</b> / <b>Don\'t optimise</b> so it keeps running.';
 }
 
 // ---------- boot ----------

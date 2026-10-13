@@ -83,6 +83,11 @@ Settings (environment variables, all optional):
 | Vibrate on ping (app open) | ✅ | ❌ no vibration API; shows alert + beep |
 | Ping as push notification when app closed | ✅ (vibrates) | ✅ iOS 16.4+ when added to Home Screen (sound, no custom vibration) |
 
+**Sharing while the app is closed:** in ⋯ tap **📡 Keep sharing when the app is closed**. It walks the
+tracked person through installing the free **OwnTracks** app (iPhone and Android) and connects it to
+this tracker with one tap. OwnTracks then sends location (and battery, even on iPhone) in the background,
+about every 30 seconds while moving. The server endpoint is `POST /ot/<code>/<memberId>/<token>`.
+
 The ☀️ *Keep screen awake while sharing* option in ⋯ helps keep updates flowing on a phone left open.
 True always-on background tracking (like Google location sharing) needs a native app; this code's
 server and protocol could be reused by one.
