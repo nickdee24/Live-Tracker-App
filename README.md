@@ -41,7 +41,7 @@ or `cloudflared tunnel --url http://localhost:3000`.
 
 ## Deploy (free / cheap options)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/nickdee24/live-tracker)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/nickdee24/live-tracker-app)
 
 The button uses `render.yaml` (free plan, no card needed). On the free plan the server sleeps after
 15 minutes with nobody connected (the next visit takes about a minute to wake) and forgets stored data
