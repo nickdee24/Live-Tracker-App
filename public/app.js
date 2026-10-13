@@ -63,6 +63,14 @@ function fmtAgo(t) {
 }
 const hasLoc = m => m && m.sharing && m.lat != null;
 const isStale = m => !m.updatedAt || Date.now() - m.updatedAt > STALE_MS;
+// Speed in mph with a hint of how they're moving; nothing if the reading is old.
+function speedText(m) {
+  if (!hasLoc(m) || m.speed == null || isStale(m)) return null;
+  const mph = m.speed * 2.23694;
+  if (mph < 1) return '🧍 Not moving';
+  const how = mph < 5 ? '🚶' : mph < 9 ? '🏃' : mph < 18 ? '🚴' : '🚗';
+  return `${how} ${Math.round(mph)} mph`;
+}
 const distInfo = d => ({ dist: fmtDist(d), walk: fmtWalk(d), short: `${fmtDist(d)} · ${fmtWalk(d)}` });
 function awayText(m) {
   if (!hasLoc(m) || !home) return null;
@@ -206,7 +214,8 @@ function renderAll() { members.forEach(renderMember); renderSelected(); renderPe
 
 function markerHtml(m) {
   const away = awayText(m), fy = fromYou(m);
-  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
+  const sp = speedText(m);
+  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${sp ? `<small>${esc(sp)}</small>` : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
           <div class="pin" style="background:${colorFor(m.id)}">${esc(initial(m.name))}</div>`;
 }
 function renderMember(m) {
@@ -261,7 +270,7 @@ function renderSelected() {
   $('selName').textContent = m.name + (m.id === me.id ? ' (you)' : '');
   if (!m.sharing) {
     $('selAddr').textContent = 'Not sharing location';
-    $('selDist').textContent = ''; $('selFromYou').textContent = ''; $('selBattery').textContent = '';
+    $('selDist').textContent = ''; $('selFromYou').textContent = ''; $('selSpeed').textContent = ''; $('selBattery').textContent = '';
   } else if (!hasLoc(m)) {
     $('selAddr').textContent = 'Waiting for location…';
   } else {
@@ -270,6 +279,7 @@ function renderSelected() {
     const fy = fromYou(m);
     $('selFromYou').textContent = fy ? `👤 ${m.name} is ${fy.dist} from you · ≈${fy.walk}` : '';
     $('selDist').textContent = away ? `🏠 ${away.dist} from ${home.postcode} · ≈${away.walk}` : '';
+    $('selSpeed').textContent = speedText(m) || '';
     $('selBattery').textContent = m.battery != null ? `${m.charging ? '⚡' : '🔋'} ${m.battery}%${m.charging ? ' charging' : ''}` : '🔋 battery n/a';
   }
   const via = !m.sharing ? '' : m.source === 'background' && !m.online ? ' · background tracking'
@@ -354,7 +364,7 @@ function stopSharing(notify = true) {
 function tick() {
   navigator.geolocation.getCurrentPosition(pos => {
     geoError = '';
-    lastFix = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, at: Date.now() };
+    lastFix = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, speed: pos.coords.speed, at: Date.now() };
     sendLocation(lastFix);
   }, err => {
     geoError = err.code === 1 ? 'Location permission denied: allow it in your browser settings' : 'Could not get a location fix';
@@ -364,7 +374,7 @@ function tick() {
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 9000 });
 }
 function sendLocation(fix) {
-  send({ t: 'loc', lat: fix.lat, lng: fix.lng, acc: fix.acc, battery: battery ? battery.level : null, charging: battery ? battery.charging : null });
+  send({ t: 'loc', lat: fix.lat, lng: fix.lng, acc: fix.acc, speed: fix.speed, battery: battery ? battery.level : null, charging: battery ? battery.charging : null });
 }
 $('shareBtn').onclick = () => (me.sharing ? stopSharing() : startSharing());
 

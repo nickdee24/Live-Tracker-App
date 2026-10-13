@@ -147,19 +147,26 @@ function newCode() {
   return c;
 }
 const publicMember = m => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, acc: m.acc, battery: m.battery, charging: m.charging,
-  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null });
+  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null });
 function isOnline(id) { for (const s of sockets.values()) if (s.id === id) return true; return false; }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(code, msg) { for (const [ws, s] of sockets) if (s.code === code) send(ws, msg); }
 function broadcastAll(msg) { for (const ws of sockets.keys()) send(ws, msg); }
 function socketsFor(id) { return [...sockets].filter(([, s]) => s.id === id).map(([ws]) => ws); }
 
-function updateLocation(code, me, { lat, lng, acc, battery, charging }) {
+function updateLocation(code, me, { lat, lng, acc, battery, charging, speed }) {
   if (!me.sharing) return false;
   lat = +lat; lng = +lng;
   if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
   const moved = me.lat == null ? Infinity : distance(me.lat, me.lng, lat, lng);
-  Object.assign(me, { lat, lng, acc: +acc || null, updatedAt: Date.now() });
+  const now = Date.now(), dt = me.updatedAt ? (now - me.updatedAt) / 1000 : 0;
+  // Prefer the phone's own speed reading (m/s); otherwise work it out from the last two positions.
+  let v = speed != null && isFinite(+speed) && +speed >= 0 ? +speed : null;
+  if (v == null && me.lat != null && dt >= 3 && dt <= 180) {
+    const noise = Math.max(+acc || 0, me.acc || 0, 10);
+    v = moved > noise ? moved / dt : 0;
+  }
+  Object.assign(me, { lat, lng, acc: +acc || null, updatedAt: now, speed: v });
   me.battery = battery != null && isFinite(battery) && battery >= 0 ? battery : null;
   me.charging = me.battery != null ? !!charging : null;
   broadcast(code, { t: 'member', member: publicMember(me) });
@@ -191,7 +198,8 @@ function handleOwnTracks(req, res, [code, id, token], name) {
     if (!m.token || m.token !== token) return;
     // OwnTracks battery status: 2 = charging, 3 = full.
     m.source = 'background';
-    updateLocation(code, m, { lat: msg.lat, lng: msg.lon, acc: msg.acc, battery: msg.batt, charging: msg.bs === 2 || msg.bs === 3 });
+    updateLocation(code, m, { lat: msg.lat, lng: msg.lon, acc: msg.acc, battery: msg.batt, charging: msg.bs === 2 || msg.bs === 3,
+      speed: msg.vel != null ? +msg.vel / 3.6 : null }); // OwnTracks reports km/h
   });
 }
 
@@ -224,7 +232,7 @@ function handle(ws, msg) {
   if (msg.t === 'loc') {
     me.source = 'app';
     updateLocation(s.code, me, { lat: msg.lat, lng: msg.lng, acc: msg.acc,
-      battery: msg.battery != null ? Math.round(+msg.battery * 100) : null, charging: msg.charging });
+      battery: msg.battery != null ? Math.round(+msg.battery * 100) : null, charging: msg.charging, speed: msg.speed });
   } else if (msg.t === 'sharing') {
     me.sharing = !!msg.on;
     if (!me.sharing) { me.lat = me.lng = me.acc = me.address = me.battery = null; me.updatedAt = Date.now(); }
