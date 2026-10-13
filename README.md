@@ -8,7 +8,7 @@ and arrive/leave alerts for named areas or postcodes.
 - **Join code groups.** Someone taps *Create a new group* and gets a 6-character code. Anyone with the
   code can join; everyone in the group can see everyone else's name and location.
 - **Live map** (OpenStreetMap). Each person shows as a coloured circle with their name above it and
-  how far they are from **WN8 8NQ** (🏠 on the map), e.g. `0.8 miles · 20 min walk`.
+  how far they are from you (👤) and from **WN8 8NQ** (🏠 on the map), e.g. `👤 0.8 miles · 20 min walk`.
 - **Location every 10 seconds** while sharing. People who haven't updated for a minute are greyed out.
 - **Info bar at the bottom** for the selected person: current road/address, distance and walking time
   from WN8 8NQ, when the location was last updated, and battery level/charging.

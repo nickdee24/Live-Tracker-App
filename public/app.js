@@ -63,10 +63,22 @@ function fmtAgo(t) {
 }
 const hasLoc = m => m && m.sharing && m.lat != null;
 const isStale = m => !m.updatedAt || Date.now() - m.updatedAt > STALE_MS;
+const distInfo = d => ({ dist: fmtDist(d), walk: fmtWalk(d), short: `${fmtDist(d)} · ${fmtWalk(d)}` });
 function awayText(m) {
   if (!hasLoc(m) || !home) return null;
-  const d = distM(m, home);
-  return { dist: fmtDist(d), walk: fmtWalk(d), short: `${fmtDist(d)} · ${fmtWalk(d)}` };
+  return distInfo(distM(m, home));
+}
+// Where the viewer is: their latest fix, or a local-only fix if they aren't sharing.
+function myPos() {
+  if (lastFix) return lastFix;
+  const mm = members.get(me.id);
+  if (hasLoc(mm)) return mm;
+  return localFix;
+}
+function fromYou(m) {
+  const p = myPos();
+  if (!hasLoc(m) || m.id === me.id || !p) return null;
+  return distInfo(distM(m, p));
 }
 function toast(msg, ms = 5000) {
   const el = document.createElement('div');
@@ -165,7 +177,7 @@ function onMessage(msg) {
     case 'member': {
       const prev = members.get(msg.member.id);
       members.set(msg.member.id, msg.member);
-      renderMember(msg.member);
+      if (msg.member.id === me.id) members.forEach(renderMember); else renderMember(msg.member);
       checkGeofences(msg.member, prev);
       if (msg.member.id === selectedId) { renderSelected(); if (following && hasLoc(msg.member)) followSelected(); }
       renderPeople();
@@ -193,8 +205,8 @@ function drawHome() {
 function renderAll() { members.forEach(renderMember); renderSelected(); renderPeople(); renderMine(); }
 
 function markerHtml(m) {
-  const away = awayText(m);
-  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${away ? `<small>${esc(away.short)}</small>` : ''}</div>
+  const away = awayText(m), fy = fromYou(m);
+  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
           <div class="pin" style="background:${colorFor(m.id)}">${esc(initial(m.name))}</div>`;
 }
 function renderMember(m) {
@@ -248,13 +260,15 @@ function renderSelected() {
   $('selName').textContent = m.name + (m.id === me.id ? ' (you)' : '');
   if (!m.sharing) {
     $('selAddr').textContent = 'Not sharing location';
-    $('selDist').textContent = ''; $('selBattery').textContent = '';
+    $('selDist').textContent = ''; $('selFromYou').textContent = ''; $('selBattery').textContent = '';
   } else if (!hasLoc(m)) {
     $('selAddr').textContent = 'Waiting for location…';
   } else {
     $('selAddr').textContent = m.address || 'Looking up address…';
     const away = awayText(m);
-    $('selDist').textContent = away ? `📏 ${m.name} is ${away.dist} from ${home.postcode} · ≈${away.walk}` : '';
+    const fy = fromYou(m);
+    $('selFromYou').textContent = fy ? `👤 ${m.name} is ${fy.dist} from you · ≈${fy.walk}` : '';
+    $('selDist').textContent = away ? `🏠 ${away.dist} from ${home.postcode} · ≈${away.walk}` : '';
     $('selBattery').textContent = m.battery != null ? `${m.charging ? '⚡' : '🔋'} ${m.battery}%${m.charging ? ' charging' : ''}` : '🔋 battery n/a';
   }
   const via = !m.sharing ? '' : m.source === 'background' && !m.online ? ' · background tracking'
@@ -267,8 +281,9 @@ function renderSelected() {
 function renderPeople() {
   const list = [...members.values()].sort((a, b) => (a.id === me.id ? -1 : b.id === me.id ? 1 : a.name.localeCompare(b.name)));
   $('peopleList').innerHTML = list.map(m => {
-    const away = awayText(m);
-    const sub = !m.sharing ? 'Not sharing' : !hasLoc(m) ? 'Waiting for location' : `${away ? away.short + ' · ' : ''}${fmtAgo(m.updatedAt)}`;
+    const away = awayText(m), fy = fromYou(m);
+    const where = fy ? `${fy.dist} from you · ` : away ? `${away.dist} from ${home.postcode} · ` : '';
+    const sub = !m.sharing ? 'Not sharing' : !hasLoc(m) ? 'Waiting for location' : `${where}${fmtAgo(m.updatedAt)}`;
     return `<li data-id="${esc(m.id)}"><div class="avatar" style="background:${colorFor(m.id)}">${esc(initial(m.name))}</div>
       <div class="grow"><b>${esc(m.name)}${m.id === me.id ? ' (you)' : ''}</b><div class="muted small">${esc(sub)}</div></div>
       ${m.battery != null && m.sharing ? `<span class="small">${m.charging ? '⚡' : '🔋'}${m.battery}%</span>` : ''}</li>`;
@@ -301,7 +316,19 @@ setInterval(() => {
 }, 1000);
 
 // ---------- sharing my location ----------
-let shareTimer = null, lastFix = null, geoError = '', battery = null;
+let shareTimer = null, lastFix = null, localFix = null, geoError = '', battery = null;
+// When not sharing, still read our position locally (never sent) so "from you" distances work.
+setInterval(localTick, 30000);
+function localTick() {
+  if (me.sharing || !me.code || !navigator.permissions) return;
+  navigator.permissions.query({ name: 'geolocation' }).then(st => {
+    if (st.state !== 'granted') return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      localFix = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      members.forEach(renderMember); renderPeople();
+    }, () => {}, { maximumAge: 30000, timeout: 15000 });
+  }).catch(() => {});
+}
 if (navigator.getBattery) navigator.getBattery().then(b => { battery = b; }).catch(() => {});
 
 function startSharing() {
@@ -317,6 +344,7 @@ function startSharing() {
 function stopSharing(notify = true) {
   me.sharing = false; store.set('sharing', false);
   clearInterval(shareTimer); shareTimer = null; lastFix = null;
+  localTick();
   if (notify) send({ t: 'sharing', on: false });
   releaseWakeLock();
   renderMine();
