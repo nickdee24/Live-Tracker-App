@@ -1,0 +1,17 @@
+{
+  "name": "live-tracker",
+  "version": "1.0.0",
+  "description": "Live location sharing with join codes, emergency pings and arrive/leave alerts",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "web-push": "^3.6.7",
+    "ws": "^8.22.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

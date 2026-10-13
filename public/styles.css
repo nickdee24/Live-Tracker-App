@@ -1,0 +1,91 @@
+:root {
+  --bg: #ffffff; --fg: #1b1f24; --muted: #667080; --line: #e3e6ea; --accent: #1f6feb; --danger: #d1242f;
+  --panel: rgba(255,255,255,.97); --shadow: 0 6px 24px rgba(0,0,0,.18);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15181c; --fg: #e8eaed; --muted: #9aa3ad; --line: #2c3238; --panel: rgba(24,27,31,.97); }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--fg); background: var(--bg); }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.error { color: var(--danger); min-height: 1em; }
+.row { display: flex; align-items: center; gap: 10px; }
+.gap { gap: 8px; }
+.grow { flex: 1; min-width: 0; }
+.spacer { flex: 1; }
+
+button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+button.small { padding: 6px 10px; font-size: 13px; }
+button:disabled { opacity: .5; }
+input, select { font: inherit; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); margin-top: 4px; }
+label { display: block; margin: 10px 0; }
+label.check { display: flex; gap: 8px; align-items: center; }
+label.check input { width: auto; margin: 0; }
+
+/* Join */
+.screen { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+.card { width: 100%; max-width: 380px; background: var(--panel); padding: 24px; border-radius: 16px; box-shadow: var(--shadow); }
+.card h1 { margin: 0 0 4px; }
+.card button { width: 100%; }
+.or { text-align: center; color: var(--muted); margin: 10px 0; }
+#joinCode { text-transform: uppercase; letter-spacing: 3px; }
+
+/* App */
+#app { position: fixed; inset: 0; }
+#map { position: absolute; inset: 0; }
+#topbar { position: absolute; top: 0; left: 0; right: 0; z-index: 1000; display: flex; gap: 6px; align-items: center;
+  padding: calc(env(safe-area-inset-top) + 8px) 10px 8px; pointer-events: none; }
+#topbar > * { pointer-events: auto; }
+.chip { background: var(--panel); box-shadow: var(--shadow); border: 0; padding: 8px 12px; border-radius: 999px; font-size: 14px; white-space: nowrap; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #aaa; box-shadow: 0 0 0 3px var(--panel); }
+.dot.on { background: #2da44e; } .dot.off { background: var(--danger); }
+
+#infobar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000; background: var(--panel); box-shadow: var(--shadow);
+  border-radius: 16px 16px 0 0; padding: 12px 14px calc(env(safe-area-inset-bottom) + 12px); display: grid; gap: 10px; }
+#infobar .name { font-weight: 600; font-size: 17px; }
+#infobar .addr { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#infobar .stats { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; }
+#pingBtn { width: 100%; margin-top: 8px; }
+#myrow { border-top: 1px solid var(--line); padding-top: 10px; font-size: 14px; }
+#followBtn.off { opacity: .6; }
+
+.avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; flex: none; }
+
+.panel { position: absolute; z-index: 1100; top: calc(env(safe-area-inset-top) + 56px); right: 10px; left: 10px; max-width: 420px; margin-left: auto;
+  max-height: calc(100% - 120px); overflow: auto; background: var(--panel); border-radius: 16px; box-shadow: var(--shadow); padding: 14px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; }
+.panel-head h2 { margin: 0; font-size: 18px; }
+.close { border: 0; background: none; font-size: 18px; padding: 4px 8px; }
+.panel ul { list-style: none; padding: 0; margin: 10px 0 0; }
+.panel li { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+.panel > button { width: 100%; margin: 6px 0; text-align: left; }
+
+/* Map markers */
+.person-marker { position: relative; }
+.person-marker .label { position: absolute; bottom: 46px; left: 50%; transform: translateX(-50%); background: var(--panel); color: var(--fg);
+  padding: 2px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.25); text-align: center; line-height: 1.3; }
+.person-marker .label small { display: block; font-weight: 400; color: var(--muted); }
+.person-marker .pin { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; display: grid; place-items: center; color: #fff; font-weight: 700;
+  font-size: 17px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.person-marker.stale .pin { filter: grayscale(1); opacity: .7; }
+.person-marker.selected .pin { outline: 3px solid var(--accent); outline-offset: 2px; }
+.home-marker { font-size: 26px; text-shadow: 0 1px 3px rgba(0,0,0,.4); }
+
+/* Toasts */
+#toasts { position: absolute; z-index: 1200; top: calc(env(safe-area-inset-top) + 58px); left: 0; right: 0; display: grid; gap: 8px; justify-items: center; pointer-events: none; }
+.toast { background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 12px; box-shadow: var(--shadow); max-width: 92%; animation: pop .25s ease-out; }
+@keyframes pop { from { transform: translateY(-10px); opacity: 0; } }
+
+/* Ping overlay */
+#pingOverlay { position: fixed; inset: 0; z-index: 2000; background: rgba(209,36,47,.92); display: grid; place-items: center; padding: 20px; animation: flash 1s infinite alternate; }
+@keyframes flash { to { background: rgba(140,10,20,.95); } }
+.ping-card { text-align: center; color: #fff; }
+.ping-card .big { font-size: 72px; }
+.ping-card h2 { font-size: 28px; margin: 6px 0; }
+.ping-card button { margin-top: 20px; font-size: 18px; padding: 14px 24px; background: #fff; color: var(--danger); border: 0; }
+.leaflet-top { top: calc(env(safe-area-inset-top) + 52px); }
+.leaflet-bottom { bottom: var(--infobar-h, 0px); }

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: live-tracker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/home
+    envVars:
+      - key: HOME_POSTCODE
+        value: WN8 8NQ
+      - key: VAPID_SECRET
+        generateValue: true
+      - key: EPHEMERAL_STORAGE
+        value: "1"
