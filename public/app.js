@@ -7,17 +7,20 @@ const WALK_MPS = 1.34;               // average walking speed, ~3 mph
 const ROUTE_FACTOR = 1.2;            // roads are rarely straight: pad straight-line distance
 
 const $ = id => document.getElementById(id);
+// The partner app (/partner) is this page in a simpler mode, with its own saved settings.
+const SIMPLE = document.body.classList.contains('simple');
+const NS = SIMPLE ? 'ltp.' : 'lt.';
 const store = {
-  get(k, d = null) { try { const v = localStorage.getItem('lt.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('lt.' + k, JSON.stringify(v)); } catch {} },
-  del(k) { try { localStorage.removeItem('lt.' + k); } catch {} },
+  get(k, d = null) { try { const v = localStorage.getItem(NS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(NS + k); } catch {} },
 };
 
 const me = {
   id: store.get('id') || (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()),
   name: store.get('name', ''),
   code: store.get('code', ''),
-  sharing: store.get('sharing', true),
+  sharing: store.get('sharing', !SIMPLE),
   token: store.get('token', ''),
 };
 store.set('id', me.id);
@@ -70,6 +73,19 @@ function speedText(m) {
   if (mph < 1) return '🧍 Not moving';
   const how = mph < 5 ? '🚶' : mph < 9 ? '🏃' : mph < 18 ? '🚴' : '🚗';
   return `${how} ${Math.round(mph)} mph`;
+}
+// A trip shared from NaviGO; ignored if NaviGO has gone quiet for 10 minutes.
+function activeTrip(m) {
+  return m && m.trip && m.updatedAt && Date.now() - m.updatedAt < 10 * 60000 ? m.trip : null;
+}
+function tripText(m, long) {
+  const t = activeTrip(m);
+  if (!t) return null;
+  const mins = Math.max(0, Math.round((t.eta - Date.now()) / 60000));
+  const at = new Date(t.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const left = t.remainingM != null ? ` · ${fmtDist(t.remainingM)} left` : '';
+  return long ? `🚗 Driving to ${t.destName} · arriving ${at} (${mins < 1 ? 'any moment' : 'in ' + mins + ' min'})${left}`
+    : `🚗 ${t.destName} · ${at}`;
 }
 const distInfo = d => ({ dist: fmtDist(d), walk: fmtWalk(d), short: `${fmtDist(d)} · ${fmtWalk(d)}` });
 function awayText(m) {
@@ -187,6 +203,7 @@ function onMessage(msg) {
       members.set(msg.member.id, msg.member);
       if (msg.member.id === me.id) members.forEach(renderMember); else renderMember(msg.member);
       checkGeofences(msg.member, prev);
+      renderTrips();
       if (msg.member.id === selectedId) { updateStreetView(); renderSelected(); if (following && hasLoc(msg.member)) followSelected(); }
       renderPeople();
       break;
@@ -198,6 +215,9 @@ function onMessage(msg) {
       renderPeople();
       break;
     case 'ping': showPing(msg.from, msg.text, msg.urgent); break;
+    case 'notice':
+      if (msg.fromId !== me.id) { toast(`${msg.title}${msg.body ? ' · ' + msg.body : ''}`, 10000); notify(msg.title, msg.body, 'notice'); }
+      break;
     case 'pinged': toast(msg.delivered ? `Sent to ${msg.to}.` : `${msg.to} isn't connected right now; they'll see it next time they open the app.`); break;
   }
 }
@@ -210,12 +230,12 @@ function drawHome() {
   else homeMarker = L.marker([home.lat, home.lng], { icon, zIndexOffset: -1000 }).addTo(map);
   homeMarker.bindTooltip(home.postcode + (home.approx ? ' (approx.)' : ''));
 }
-function renderAll() { members.forEach(renderMember); renderSelected(); renderPeople(); renderMine(); }
+function renderAll() { members.forEach(renderMember); renderSelected(); renderPeople(); renderMine(); renderTrips(); }
 
 function markerHtml(m) {
   const away = awayText(m), fy = fromYou(m);
-  const sp = speedText(m);
-  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${sp ? `<small>${esc(sp)}</small>` : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
+  const sp = speedText(m), tt = tripText(m);
+  return `<div class="label">${esc(m.name)}${m.id === me.id ? ' (you)' : ''}${tt ? `<small>${esc(tt)}</small>` : ''}${sp ? `<small>${esc(sp)}</small>` : ''}${fy ? `<small>👤 ${esc(fy.short)}</small>` : ''}${away ? `<small>🏠 ${esc(away.short)}</small>` : ''}</div>
           <div class="pin" style="background:${colorFor(m.id)}">${esc(initial(m.name))}</div>`;
 }
 function renderMember(m) {
@@ -268,6 +288,9 @@ function renderSelected() {
   $('selAvatar').textContent = initial(m.name);
   $('selAvatar').style.background = colorFor(m.id);
   $('selName').textContent = m.name + (m.id === me.id ? ' (you)' : '');
+  const tl = tripText(m, true);
+  $('selTrip').textContent = tl || ''; $('selTrip').classList.toggle('hidden', !tl);
+  drawTripDest(m);
   if (!m.sharing) {
     $('selAddr').textContent = 'Not sharing location';
     $('selDist').textContent = ''; $('selFromYou').textContent = ''; $('selSpeed').textContent = ''; $('selBattery').textContent = '';
@@ -282,7 +305,7 @@ function renderSelected() {
     $('selSpeed').textContent = speedText(m) || '';
     $('selBattery').textContent = m.battery != null ? `${m.charging ? '⚡' : '🔋'} ${m.battery}%${m.charging ? ' charging' : ''}` : '🔋 battery n/a';
   }
-  const via = !m.sharing ? '' : m.source === 'background' && !m.online ? ' · background tracking'
+  const via = !m.sharing ? '' : m.source === 'navigo' ? ' · via NaviGO' : m.source === 'background' && !m.online ? ' · background tracking'
     : !m.online && hasLoc(m) ? ' · app closed, last known spot' : '';
   $('selUpdated').textContent = `🕒 Updated ${fmtAgo(m.updatedAt)}${via}`;
   $('pingBtn').classList.toggle('hidden', m.id === me.id);
@@ -637,9 +660,30 @@ function setupBackground() {
     : '3. When OwnTracks asks for location, choose <b>Allow all the time</b>. If asked about battery optimisation, choose <b>Allow</b> / <b>Don\'t optimise</b> so it keeps running.';
 }
 
+// ---------- shared trips ----------
+let destMarker = null, destLine = null, destFor = null;
+function drawTripDest(m) {
+  const t = activeTrip(m);
+  const key = t ? `${m.id}|${t.destLat}|${t.destLng}|${m.lat}|${m.lng}` : null;
+  if (key === destFor) return;
+  destFor = key;
+  if (destMarker) { destMarker.remove(); destLine.remove(); destMarker = destLine = null; }
+  if (!t || !isFinite(t.destLat) || !hasLoc(m)) return;
+  destMarker = L.marker([t.destLat, t.destLng], { icon: L.divIcon({ className: 'home-marker', html: '🏁', iconSize: [28, 28], iconAnchor: [6, 26] }) })
+    .bindTooltip(t.destName).addTo(map);
+  destLine = L.polyline([[m.lat, m.lng], [t.destLat, t.destLng]], { color: '#1f6feb', weight: 3, dashArray: '6 8', opacity: 0.7 }).addTo(map);
+}
+function renderTrips() {
+  const list = [...members.values()].filter(m => m.id !== me.id && activeTrip(m));
+  $('tripBanner').innerHTML = list.map(m => `<button class="trip-chip" data-id="${esc(m.id)}"><b>${esc(m.name)}</b> ${esc(tripText(m, true).replace('🚗 Driving to', '→'))}</button>`).join('');
+  $('tripBanner').classList.toggle('hidden', !list.length);
+}
+$('tripBanner').onclick = e => { const b = e.target.closest('[data-id]'); if (b) select(b.dataset.id); };
+setInterval(() => { if (map) renderTrips(); }, 5000);
+
 // ---------- Street View picture-in-picture ----------
 // Uses Google's keyless Street View embed; it points the camera the way the person is heading.
-let svOn = store.get('sv', true), svShown = null; // svShown: { id, lat, lng }
+let svOn = store.get('sv', !SIMPLE), svShown = null; // svShown: { id, lat, lng }
 const svPrev = new Map(); // id -> last position used to work out heading
 function bearing(a, b) {
   const r = Math.PI / 180, y = Math.sin((b.lng - a.lng) * r) * Math.cos(b.lat * r);
@@ -664,6 +708,13 @@ function updateStreetView(force) {
 $('svBtn').onclick = () => { svOn = !svOn; store.set('sv', svOn); updateStreetView(true); };
 $('svClose').onclick = () => { svOn = false; store.set('sv', false); updateStreetView(); };
 $('svSize').onclick = () => $('svBox').classList.toggle('big');
+
+// ---------- partner app ----------
+if (SIMPLE) {
+  document.querySelector('#join h1').textContent = '💞 Family Tracker';
+  document.querySelector('#join p.muted').textContent = 'See where your people are and when they\'ll be home.';
+  const lm = document.querySelector('link[rel="apple-touch-icon"]'); if (lm) lm.href = '/icon-partner-192.png';
+}
 
 // ---------- boot ----------
 if (me.name && me.code) startApp(); else showJoin();

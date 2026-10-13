@@ -104,3 +104,22 @@ server and protocol could be reused by one.
 - `server.js` — HTTP + WebSocket server, join codes, location relay, address lookup, push.
 - `public/` — the app (`index.html`, `app.js`, `styles.css`), service worker (`sw.js`), manifest and icons.
 - `public/vendor/` — Leaflet map library (bundled so no CDN is needed).
+
+## Partner app
+
+`/partner` (e.g. https://live-tracker-phm2.onrender.com/partner) is a simpler version for viewing: no
+alert setup, sharing off by default, big banners for shared trips. Installed to the home screen it is a
+separate app called **Family Tracker** with its own icon.
+
+## App API (used by NaviGO)
+
+All `POST`, JSON body. After joining, send `code`, `id` and `token` with every call.
+
+| Endpoint | Body | Returns |
+|---|---|---|
+| `/api/app/join` | `code`, `name` (same name = same person as on the web app) | `id`, `token`, `home` |
+| `/api/app/update` | optional `lat`, `lng`, `acc`, `speed` (m/s), `battery` (0–100), `charging`, `sharing`; `trip`: `{destName, destLat, destLng, eta (epoch ms), remainingM}` to start/update, `null` to cancel; `since` (ms) | `members` (everyone else, with location, speed and trip), `messages` sent to you since `since`, `now` |
+| `/api/app/message` | `to` (member id or `*` for everyone), `text`, optional `urgent` | `delivered` |
+| `/api/app/trip-end` | `arrived` (true sends "has arrived" to everyone) | `ok` |
+
+Starting a trip notifies everyone in the group ("🚗 Nick is driving to Home, arriving about 17:42").

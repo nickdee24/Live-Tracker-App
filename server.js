@@ -147,7 +147,7 @@ function newCode() {
   return c;
 }
 const publicMember = m => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, acc: m.acc, battery: m.battery, charging: m.charging,
-  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null, bgAt: m.bgAt || null });
+  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null, bgAt: m.bgAt || null, trip: m.trip || null });
 function isOnline(id) { for (const s of sockets.values()) if (s.id === id) return true; return false; }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(code, msg) { for (const [ws, s] of sockets) if (s.code === code) send(ws, msg); }
@@ -203,6 +203,117 @@ function handleOwnTracks(req, res, [code, id, token], name) {
   });
 }
 
+// Pings and messages reach web viewers live over their socket, apps (NaviGO) on their next poll, and anyone
+// with notifications on via push.
+function deliverMessage(from, target, text, urgentFlag) {
+  text = String(text || '').trim().slice(0, 200);
+  const urgent = urgentFlag != null ? !!urgentFlag : !text; // a plain ping is the emergency one
+  const payload = { t: 'ping', from: from.name, fromId: from.id, text, urgent, at: Date.now() };
+  const live = socketsFor(target.id);
+  live.forEach(w => send(w, payload));
+  target.inbox = (target.inbox || []).filter(x => Date.now() - x.at < 10 * 60000).slice(-19);
+  target.inbox.push({ from: from.name, fromId: from.id, text, urgent, at: payload.at });
+  pushTo(target.id, urgent
+    ? { type: 'ping', urgent, title: `🚨 ${from.name} is pinging you`, body: text || 'Emergency ping — open the tracker.', from: from.name, text }
+    : { type: 'ping', urgent, title: `💬 ${from.name}`, body: text, from: from.name, text });
+  save();
+  return live.length > 0 || (db.subs[target.id] || []).length > 0 || !!target.appSeen;
+}
+
+// Tell everyone else in the group (live + push) about a trip starting or finishing.
+function announce(code, me, title, body) {
+  broadcast(code, { t: 'notice', fromId: me.id, title, body });
+  for (const m of Object.values(db.groups[code].members)) if (m.id !== me.id) pushTo(m.id, { type: 'notice', title, body });
+}
+const clock = ms => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
+
+function setTrip(code, me, trip) {
+  if (trip === undefined) return;
+  if (trip === null) { if (me.trip) { me.trip = null; broadcast(code, { t: 'member', member: publicMember(me) }); } return; }
+  const t = {
+    destName: String(trip.destName || 'their destination').slice(0, 80),
+    destLat: +trip.destLat, destLng: +trip.destLng,
+    eta: +trip.eta, remainingM: trip.remainingM != null ? Math.round(+trip.remainingM) : null,
+  };
+  if (!isFinite(t.eta)) return;
+  const starting = !me.trip || me.trip.destName !== t.destName;
+  me.trip = { ...t, startedAt: starting ? Date.now() : me.trip.startedAt };
+  if (starting) announce(code, me, `🚗 ${me.name} is driving to ${t.destName}`, `Arriving about ${clock(t.eta)}`);
+  broadcast(code, { t: 'member', member: publicMember(me) });
+}
+function endTrip(code, me, arrived) {
+  if (!me.trip) return;
+  const dest = me.trip.destName;
+  me.trip = null;
+  if (arrived) announce(code, me, `🏁 ${me.name} has arrived at ${dest}`, '');
+  broadcast(code, { t: 'member', member: publicMember(me) });
+  save();
+}
+
+// ---------- app API (used by NaviGO and other apps; polls instead of a socket) ----------
+function readJSON(req) {
+  return new Promise(resolve => {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
+    req.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch { resolve(null); } });
+  });
+}
+function appAuth(b) {
+  const code = String(b.code || '').toUpperCase().trim();
+  const g = validCode(code) && db.groups[code];
+  const m = g && g.members[String(b.id || '')];
+  return m && m.token && m.token === b.token ? { code, g, m } : null;
+}
+async function handleAppApi(req, res, action) {
+  const b = await readJSON(req);
+  if (!b) return json(res, 400, { error: 'Bad JSON' });
+  if (action === 'join') {
+    const code = String(b.code || '').toUpperCase().trim();
+    const name = String(b.name || '').trim().slice(0, 30);
+    if (!validCode(code)) return json(res, 404, { error: "That join code doesn't exist." });
+    if (!name) return json(res, 400, { error: 'Name required.' });
+    const g = db.groups[code] ||= { created: Date.now(), members: {} };
+    // Same name in the same group = the same person, so NaviGO and the web app show as one icon.
+    let m = (b.id && g.members[b.id] && g.members[b.id].token === b.token && g.members[b.id])
+      || Object.values(g.members).find(x => x.name.toLowerCase() === name.toLowerCase());
+    if (!m) { const id = crypto.randomUUID(); m = g.members[id] = { id, name, sharing: true }; }
+    m.token ||= /^[a-f0-9]{24}$/.test(b.token || '') ? b.token : crypto.randomBytes(12).toString('hex');
+    m.name = name; save();
+    broadcast(code, { t: 'member', member: publicMember(m) });
+    return json(res, 200, { code, id: m.id, token: m.token, name: m.name, home });
+  }
+  const a = appAuth(b);
+  if (!a) return json(res, 401, { error: 'Not joined. Join the group again.' });
+  const { code, g, m } = a;
+  m.appSeen = Date.now();
+  if (action === 'update') {
+    if (b.sharing != null && !!b.sharing !== m.sharing) {
+      m.sharing = !!b.sharing;
+      if (!m.sharing) { m.lat = m.lng = m.acc = m.address = m.battery = m.speed = null; m.trip = null; m.updatedAt = Date.now(); }
+    }
+    if (b.lat != null) {
+      m.source = 'navigo';
+      updateLocation(code, m, { lat: b.lat, lng: b.lng, acc: b.acc, speed: b.speed,
+        battery: b.battery != null ? Math.round(+b.battery) : null, charging: b.charging });
+    }
+    setTrip(code, m, b.trip);
+    broadcast(code, { t: 'member', member: publicMember(m) });
+    const since = +b.since || 0;
+    const messages = (m.inbox || []).filter(x => x.at > since);
+    save();
+    return json(res, 200, { now: Date.now(), home, me: publicMember(m),
+      members: Object.values(g.members).filter(x => x.id !== m.id).map(publicMember), messages });
+  }
+  if (action === 'message') {
+    const targets = b.to === '*' ? Object.values(g.members).filter(x => x.id !== m.id) : [g.members[b.to]].filter(Boolean);
+    if (!targets.length) return json(res, 404, { error: 'Nobody to send to.' });
+    const delivered = targets.map(t => deliverMessage(m, t, b.text, b.urgent)).some(Boolean);
+    return json(res, 200, { ok: true, delivered });
+  }
+  if (action === 'trip-end') { endTrip(code, m, !!b.arrived); return json(res, 200, { ok: true }); }
+  return json(res, 404, { error: 'Unknown action' });
+}
+
 function handle(ws, msg) {
   const s = sockets.get(ws);
   if (msg.t === 'hello') {
@@ -241,15 +352,8 @@ function handle(ws, msg) {
   } else if (msg.t === 'ping') {
     const target = g.members[msg.to];
     if (!target) return;
-    const text = String(msg.text || '').trim().slice(0, 200);
-    const urgent = !text; // a plain ping is the emergency one; a message ping is a gentler alert
-    const payload = { t: 'ping', from: me.name, fromId: me.id, text, urgent, at: Date.now() };
-    const live = socketsFor(target.id);
-    live.forEach(w => send(w, payload));
-    pushTo(target.id, urgent
-      ? { type: 'ping', urgent, title: `🚨 ${me.name} is pinging you`, body: 'Emergency ping — open the tracker.', from: me.name, text }
-      : { type: 'ping', urgent, title: `💬 ${me.name}`, body: text, from: me.name, text });
-    send(ws, { t: 'pinged', to: target.name, delivered: live.length > 0 || (db.subs[target.id] || []).length > 0 });
+    const delivered = deliverMessage(me, target, msg.text);
+    send(ws, { t: 'pinged', to: target.name, delivered });
   } else if (msg.t === 'pushsub') {
     if (!msg.sub || !msg.sub.endpoint) return;
     const list = db.subs[me.id] ||= [];
@@ -273,6 +377,8 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const ot = url.pathname.match(/^\/ot\/([A-Z0-9]{6})\/([\w-]{1,64})\/([a-f0-9]{24})$/);
   if (ot && req.method === 'POST') return handleOwnTracks(req, res, ot.slice(1), url.searchParams.get('name'));
+  const api = url.pathname.match(/^\/api\/app\/(join|update|message|trip-end)$/);
+  if (api && req.method === 'POST') return handleAppApi(req, res, api[1]);
   if (req.method === 'POST' && url.pathname === '/api/groups') {
     const code = newCode();
     db.groups[code] = { created: Date.now(), members: {} };
@@ -289,6 +395,15 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/api/home') return json(res, 200, home);
 
+  if (url.pathname === '/partner' || url.pathname === '/partner/') {
+    // The partner app: same page in a simpler mode, installed as its own app with its own name.
+    return fs.readFile(path.join(PUBLIC_DIR, 'index.html'), 'utf8', (err, html) => {
+      if (err) { res.writeHead(500); return res.end(); }
+      html = html.replace('/manifest.webmanifest', '/partner.webmanifest').replace('<body>', '<body class="simple">')
+        .replace('<title>Live Tracker</title>', '<title>Family Tracker</title>');
+      res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' }); res.end(html);
+    });
+  }
   let file = path.normalize(path.join(PUBLIC_DIR, url.pathname === '/' ? 'index.html' : url.pathname));
   if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
