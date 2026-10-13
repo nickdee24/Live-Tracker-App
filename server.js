@@ -154,6 +154,11 @@ const EMOTES = ['😊', '❤️', '😘', '🥰', '😂', '👍', '👋', '🎉'
 function broadcast(code, msg) { for (const [ws, s] of sockets) if (s.code === code) send(ws, msg); }
 function broadcastAll(msg) { for (const ws of sockets.keys()) send(ws, msg); }
 function socketsFor(id) { return [...sockets].filter(([, s]) => s.id === id).map(([ws]) => ws); }
+// Is one of this person's apps on screen right now (the tracker in front, or NaviGO in front)?
+// If so they'll see things in the app, so no phone notification.
+function appOpen(m) {
+  return [...sockets.values()].some(s => s.id === m.id && s.visible) || (!!m.appVisibleAt && Date.now() - m.appVisibleAt < 20000);
+}
 
 function updateLocation(code, me, { lat, lng, acc, battery, charging, speed }) {
   if (!me.sharing) return false;
@@ -213,8 +218,10 @@ function deliverMessage(from, target, text, urgentFlag) {
   const live = socketsFor(target.id);
   live.forEach(w => send(w, payload));
   target.inbox = (target.inbox || []).filter(x => Date.now() - x.at < 10 * 60000).slice(-19);
-  target.inbox.push({ from: from.name, fromId: from.id, text, urgent, at: payload.at });
-  pushTo(target.id, urgent
+  const open = appOpen(target);
+  // quiet: NaviGO shouldn't make its own notification either, because the person has an app open.
+  target.inbox.push({ from: from.name, fromId: from.id, text, urgent, quiet: open, at: payload.at });
+  if (!open) pushTo(target.id, urgent
     ? { type: 'ping', urgent, title: `🚨 ${from.name} is pinging you`, body: text || 'Emergency ping — open the tracker.', from: from.name, text }
     : { type: 'ping', urgent, title: `💬 ${from.name}`, body: text, from: from.name, text });
   save();
@@ -224,7 +231,7 @@ function deliverMessage(from, target, text, urgentFlag) {
 // Tell everyone else in the group (live + push) about a trip starting or finishing.
 function announce(code, me, title, body) {
   broadcast(code, { t: 'notice', fromId: me.id, title, body });
-  for (const m of Object.values(db.groups[code].members)) if (m.id !== me.id) pushTo(m.id, { type: 'notice', title, body });
+  for (const m of Object.values(db.groups[code].members)) if (m.id !== me.id && !appOpen(m)) pushTo(m.id, { type: 'notice', title, body });
 }
 const clock = ms => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
 
@@ -295,6 +302,7 @@ async function handleAppApi(req, res, action) {
   if (!a) return json(res, 401, { error: 'Not joined. Join the group again.' });
   const { code, g, m } = a;
   m.appSeen = Date.now();
+  if (b.visible != null) m.appVisibleAt = b.visible ? Date.now() : 0;
   if (action === 'update') {
     if (b.sharing != null && !!b.sharing !== m.sharing) {
       m.sharing = !!b.sharing;
@@ -339,7 +347,7 @@ function handle(ws, msg) {
     m.name = name;
     // Reuse the token the phone remembers so its background-tracking link survives a storage wipe.
     m.token ||= /^[a-f0-9]{24}$/.test(msg.token || '') ? msg.token : crypto.randomBytes(12).toString('hex');
-    s.id = id; s.code = code;
+    s.id = id; s.code = code; s.visible = msg.visible !== false;
     save();
     send(ws, { t: 'state', code, home, vapidKey: vapid.publicKey, token: m.token, members: Object.values(g.members).map(publicMember) });
     broadcast(code, { t: 'member', member: publicMember(m) });
@@ -350,6 +358,7 @@ function handle(ws, msg) {
   const me = g && g.members[s.id];
   if (!me) return;
 
+  if (msg.t === 'vis') { s.visible = !!msg.on; return; }
   if (msg.t === 'loc') {
     me.source = 'app';
     updateLocation(s.code, me, { lat: msg.lat, lng: msg.lng, acc: msg.acc,

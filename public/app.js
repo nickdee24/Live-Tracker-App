@@ -167,7 +167,7 @@ function connect() {
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onopen = () => {
     wsRetry = 0; $('conn').className = 'dot on';
-    send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing, token: me.token });
+    send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing, token: me.token, visible: document.visibilityState === 'visible' });
   };
   ws.onclose = () => {
     $('conn').className = 'dot off';
@@ -408,8 +408,10 @@ async function requestWakeLock() {
   if (!store.get('keepAwake', false) || !('wakeLock' in navigator)) return;
   try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
 }
+addEventListener('pagehide', () => send({ t: 'vis', on: false }));
 function releaseWakeLock() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
 document.addEventListener('visibilitychange', () => {
+  send({ t: 'vis', on: document.visibilityState === 'visible' });   // no phone notifications while the app is on screen
   if (document.visibilityState === 'visible' && me.sharing && me.code) { requestWakeLock(); tick(); }
 });
 
@@ -612,7 +614,7 @@ $('codeBtn').onclick = async () => {
 };
 $('renameBtn').onclick = () => {
   const n = prompt('Your name', me.name);
-  if (n && n.trim()) { me.name = n.trim().slice(0, 30); store.set('name', me.name); send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing, token: me.token }); }
+  if (n && n.trim()) { me.name = n.trim().slice(0, 30); store.set('name', me.name); send({ t: 'hello', id: me.id, name: me.name, code: me.code, sharing: me.sharing, token: me.token, visible: document.visibilityState === 'visible' }); }
 };
 $('leaveBtn').onclick = () => {
   if (!confirm('Leave this group? You will stop sharing and disappear from everyone\'s map.')) return;
