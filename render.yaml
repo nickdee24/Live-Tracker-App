@@ -3,6 +3,7 @@ services:
     name: live-tracker
     runtime: node
     plan: free
+    autoDeploy: true
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/home

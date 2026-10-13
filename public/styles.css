@@ -94,3 +94,4 @@ a.button.primary { background: var(--accent); color: #fff; border-color: var(--a
 ol.steps { padding: 0; list-style: none; display: grid; gap: 10px; }
 ol.steps li { display: block; border: 0; padding: 0; cursor: default; }
 details input { margin-bottom: 6px; font-size: 12px; }
+.bg-cta { width: 100%; }

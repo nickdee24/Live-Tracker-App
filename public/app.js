@@ -302,6 +302,7 @@ function renderMine() {
   else status = `🟢 Sharing every ${PING_INTERVAL_MS / 1000}s${meM && meM.updatedAt ? ' · last sent ' + fmtAgo(meM.updatedAt) : ''}`;
   $('myStatus').textContent = status;
   $('shareBtn').textContent = me.sharing ? 'Stop sharing' : 'Start sharing';
+  $('bgBtn2').classList.toggle('hidden', !me.sharing);
   $('shareBtn').className = 'small' + (me.sharing ? '' : ' primary');
 }
 
@@ -538,7 +539,7 @@ function togglePanel(id) {
 $('peopleBtn').onclick = () => togglePanel('peoplePanel');
 $('alertsBtn').onclick = () => togglePanel('alertsPanel');
 $('menuBtn').onclick = () => togglePanel('menuPanel');
-$('bgBtn').onclick = () => { setupBackground(); togglePanel('bgPanel'); };
+$('bgBtn').onclick = $('bgBtn2').onclick = () => { setupBackground(); togglePanel('bgPanel'); };
 $('otCopy').onclick = () => { navigator.clipboard?.writeText($('otUrl').value).then(() => toast('URL copied.')).catch(() => {}); };
 document.querySelectorAll('[data-close]').forEach(b => (b.onclick = () => $(b.dataset.close).classList.add('hidden')));
 $('followBtn').onclick = () => { setFollowing(!following); if (following) followSelected(true); };
