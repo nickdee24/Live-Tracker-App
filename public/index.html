@@ -72,7 +72,7 @@
           <span id="selUpdated"></span>
           <span id="selBattery"></span>
         </div>
-        <button id="pingBtn" class="danger">📳 Ping (emergency vibrate)</button>
+        <button id="pingBtn" class="danger">📳 Ping</button>
       </div>
       <div id="nobody" class="muted">Tap a person on the map or in 👥 People.</div>
       <div id="myrow" class="row">
@@ -116,7 +116,7 @@
       <button id="renameBtn">✏️ Change my name</button>
       <button id="leaveBtn" class="danger">🚪 Leave group (opt out completely)</button>
       <p class="muted small" id="platformNote"></p>
-      <p class="muted small">App version 5</p>
+      <p class="muted small">App version 6</p>
     </div>
 
     <!-- Background tracking setup -->
@@ -139,12 +139,25 @@
         Stop sharing in this app turns them off too.</p>
     </div>
 
+    <!-- Ping chooser -->
+    <div id="pingPanel" class="panel hidden">
+      <div class="panel-head"><h2 id="pingPanelTitle">Ping</h2><button class="close" data-close="pingPanel">✕</button></div>
+      <button class="danger send-ping" data-urgent="1">🚨 Emergency ping</button>
+      <button class="send-ping" data-text="I've messaged you">💬 I've messaged you</button>
+      <button class="send-ping" data-text="On way home now">🏠 On way home now</button>
+      <form id="pingForm" class="row gap">
+        <input id="pingCustom" maxlength="200" placeholder="Type your own message" class="grow">
+        <button class="primary" type="submit">Send</button>
+      </form>
+      <p class="muted small">Messages make their phone buzz and show your message. Emergency keeps buzzing until they answer.</p>
+    </div>
+
     <!-- Incoming ping -->
     <div id="pingOverlay" class="hidden">
       <div class="ping-card">
-        <div class="big">🚨</div>
+        <div class="big" id="pingIcon">🚨</div>
         <h2 id="pingFrom"></h2>
-        <p>is pinging you. They may need you urgently.</p>
+        <p id="pingText">is pinging you. They may need you urgently.</p>
         <button id="pingDismiss" class="primary">I'm OK — dismiss</button>
       </div>
     </div>

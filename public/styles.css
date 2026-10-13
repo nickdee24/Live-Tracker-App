@@ -105,3 +105,8 @@ details input { margin-bottom: 6px; font-size: 12px; }
 #svBox .sv-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #svBox .sv-bar button, #svBox .sv-bar a { background: none; border: 0; color: #fff; padding: 4px 6px; font-size: 14px; text-decoration: none; }
 #svBtn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+#pingPanel > button { width: 100%; margin: 6px 0; text-align: left; }
+#pingForm input { margin-top: 0; }
+#pingOverlay.calm { background: rgba(31,111,235,.94); animation: none; }
+#pingOverlay.calm .ping-card button { color: var(--accent); }

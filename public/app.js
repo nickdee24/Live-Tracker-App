@@ -189,8 +189,8 @@ function onMessage(msg) {
       if (selectedId === msg.id) select(null);
       renderPeople();
       break;
-    case 'ping': showPing(msg.from); break;
-    case 'pinged': toast(msg.delivered ? `Ping sent to ${msg.to}.` : `${msg.to} isn't connected right now; they'll see it next time they open the app.`); break;
+    case 'ping': showPing(msg.from, msg.text, msg.urgent); break;
+    case 'pinged': toast(msg.delivered ? `Sent to ${msg.to}.` : `${msg.to} isn't connected right now; they'll see it next time they open the app.`); break;
   }
 }
 
@@ -276,7 +276,7 @@ function renderSelected() {
     : !m.online && hasLoc(m) ? ' · app closed, last known spot' : '';
   $('selUpdated').textContent = `🕒 Updated ${fmtAgo(m.updatedAt)}${via}`;
   $('pingBtn').classList.toggle('hidden', m.id === me.id);
-  $('pingBtn').textContent = `📳 Ping ${m.name} (emergency vibrate)`;
+  $('pingBtn').textContent = `📳 Ping or message ${m.name}`;
 }
 
 function renderPeople() {
@@ -379,11 +379,26 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && me.sharing && me.code) { requestWakeLock(); tick(); }
 });
 
-// ---------- emergency ping ----------
+// ---------- pings & quick messages ----------
 $('pingBtn').onclick = () => {
   const m = members.get(selectedId);
   if (!m) return;
-  if (confirm(`Send an emergency ping to ${m.name}? Their phone will vibrate and show an alert.`)) send({ t: 'ping', to: m.id });
+  $('pingPanelTitle').textContent = `Ping ${m.name}`;
+  togglePanel('pingPanel');
+};
+function sendPing(text) {
+  const m = members.get(selectedId);
+  if (!m) return;
+  if (!text && !confirm(`Send an EMERGENCY ping to ${m.name}? Their phone will keep buzzing until they answer.`)) return;
+  send({ t: 'ping', to: m.id, text: text || '' });
+  $('pingPanel').classList.add('hidden');
+}
+document.querySelectorAll('.send-ping').forEach(b => (b.onclick = () => sendPing(b.dataset.urgent ? '' : b.dataset.text)));
+$('pingForm').onsubmit = e => {
+  e.preventDefault();
+  const t = $('pingCustom').value.trim();
+  if (!t) return $('pingCustom').focus();
+  sendPing(t); $('pingCustom').value = '';
 };
 let vibrateTimer = null, audioCtx = null;
 function unlockAudio() {
@@ -398,12 +413,23 @@ function beep() {
     o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.4);
   } catch {}
 }
-function showPing(from) {
+function showPing(from, text, urgent = !text) {
   $('pingFrom').textContent = from;
+  $('pingIcon').textContent = urgent ? '🚨' : '💬';
+  $('pingText').textContent = urgent ? 'is pinging you. They may need you urgently.' : `“${text}”`;
+  $('pingDismiss').textContent = urgent ? "I'm OK — dismiss" : 'OK';
+  $('pingOverlay').classList.toggle('calm', !urgent);
   $('pingOverlay').classList.remove('hidden');
-  const buzz = () => { if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 800]); beep(); };
-  buzz(); clearInterval(vibrateTimer); vibrateTimer = setInterval(buzz, 2500);
-  notify(`🚨 ${from} is pinging you`, 'Emergency ping. Open the tracker.', 'ping');
+  clearInterval(vibrateTimer);
+  if (urgent) {
+    const buzz = () => { if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 800]); beep(); };
+    buzz(); vibrateTimer = setInterval(buzz, 2500);
+    notify(`🚨 ${from} is pinging you`, 'Emergency ping. Open the tracker.', 'ping');
+  } else {
+    if (navigator.vibrate) navigator.vibrate([300, 120, 300]);
+    beep();
+    notify(`💬 ${from}`, text, 'msg');
+  }
 }
 $('pingDismiss').onclick = () => {
   clearInterval(vibrateTimer); if (navigator.vibrate) navigator.vibrate(0);
@@ -413,8 +439,8 @@ $('pingDismiss').onclick = () => {
 // ---------- notifications & push ----------
 let swReg = null;
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(r => { swReg = r; maybeSubscribePush(); }).catch(() => {});
-navigator.serviceWorker?.addEventListener('message', e => { if (e.data && e.data.type === 'ping') showPing(e.data.from); });
-if (new URLSearchParams(location.search).get('ping')) setTimeout(() => showPing(new URLSearchParams(location.search).get('ping')), 500);
+navigator.serviceWorker?.addEventListener('message', e => { if (e.data && e.data.type === 'ping') showPing(e.data.from, e.data.text, e.data.urgent); });
+{ const q = new URLSearchParams(location.search); if (q.get('ping')) setTimeout(() => showPing(q.get('ping'), q.get('msg') || ''), 500); }
 
 function urlB64ToUint8(s) {
   const pad = '='.repeat((4 - (s.length % 4)) % 4);
@@ -534,7 +560,7 @@ function checkGeofences(m, prev) {
 
 // ---------- top bar & panels ----------
 function togglePanel(id) {
-  ['peoplePanel', 'alertsPanel', 'menuPanel', 'bgPanel'].forEach(p => { if (p !== id) $(p).classList.add('hidden'); });
+  ['peoplePanel', 'alertsPanel', 'menuPanel', 'bgPanel', 'pingPanel'].forEach(p => { if (p !== id) $(p).classList.add('hidden'); });
   $(id).classList.toggle('hidden');
 }
 $('peopleBtn').onclick = () => togglePanel('peoplePanel');

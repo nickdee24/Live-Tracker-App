@@ -1,5 +1,5 @@
 // Service worker: offline shell + push notifications for emergency pings.
-const CACHE = 'tracker-v5';
+const CACHE = 'tracker-v6';
 const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/icon.svg', '/manifest.webmanifest', '/icon-192.png', '/vendor/leaflet.js', '/vendor/leaflet.css'];
 
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
@@ -22,7 +22,7 @@ self.addEventListener('push', e => {
   const title = data.title || 'Live Tracker';
   e.waitUntil(self.registration.showNotification(title, {
     body: data.body || '', icon: '/icon.svg', badge: '/icon.svg', tag: data.type || 'tracker',
-    renotify: true, requireInteraction: data.type === 'ping',
+    renotify: true, requireInteraction: data.type === 'ping' && data.urgent !== false,
     vibrate: [500, 200, 500, 200, 1000, 200, 500, 200, 500], data,
   }));
 });
@@ -32,9 +32,9 @@ self.addEventListener('notificationclick', e => {
   const data = e.notification.data || {};
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     for (const c of list) {
-      if (data.type === 'ping') c.postMessage({ type: 'ping', from: data.from });
+      if (data.type === 'ping') c.postMessage({ type: 'ping', from: data.from, text: data.text, urgent: data.urgent });
       return c.focus();
     }
-    return self.clients.openWindow(data.type === 'ping' ? '/?ping=' + encodeURIComponent(data.from || '') : '/');
+    return self.clients.openWindow(data.type === 'ping' ? '/?ping=' + encodeURIComponent(data.from || '') + '&msg=' + encodeURIComponent(data.text || '') : '/');
   }));
 });

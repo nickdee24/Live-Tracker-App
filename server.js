@@ -233,10 +233,14 @@ function handle(ws, msg) {
   } else if (msg.t === 'ping') {
     const target = g.members[msg.to];
     if (!target) return;
-    const payload = { t: 'ping', from: me.name, fromId: me.id, at: Date.now() };
+    const text = String(msg.text || '').trim().slice(0, 200);
+    const urgent = !text; // a plain ping is the emergency one; a message ping is a gentler alert
+    const payload = { t: 'ping', from: me.name, fromId: me.id, text, urgent, at: Date.now() };
     const live = socketsFor(target.id);
     live.forEach(w => send(w, payload));
-    pushTo(target.id, { type: 'ping', title: `🚨 ${me.name} is pinging you`, body: 'Emergency ping — open the tracker.', from: me.name });
+    pushTo(target.id, urgent
+      ? { type: 'ping', urgent, title: `🚨 ${me.name} is pinging you`, body: 'Emergency ping — open the tracker.', from: me.name, text }
+      : { type: 'ping', urgent, title: `💬 ${me.name}`, body: text, from: me.name, text });
     send(ws, { t: 'pinged', to: target.name, delivered: live.length > 0 || (db.subs[target.id] || []).length > 0 });
   } else if (msg.t === 'pushsub') {
     if (!msg.sub || !msg.sub.endpoint) return;
