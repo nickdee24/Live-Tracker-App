@@ -147,7 +147,7 @@ function newCode() {
   return c;
 }
 const publicMember = m => ({ id: m.id, name: m.name, lat: m.lat, lng: m.lng, acc: m.acc, battery: m.battery, charging: m.charging,
-  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null });
+  address: m.address, updatedAt: m.updatedAt, sharing: m.sharing, online: isOnline(m.id), source: m.source || null, speed: m.speed ?? null, bgAt: m.bgAt || null });
 function isOnline(id) { for (const s of sockets.values()) if (s.id === id) return true; return false; }
 function send(ws, msg) { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function broadcast(code, msg) { for (const [ws, s] of sockets) if (s.code === code) send(ws, msg); }
@@ -197,7 +197,7 @@ function handleOwnTracks(req, res, [code, id, token], name) {
     }
     if (!m.token || m.token !== token) return;
     // OwnTracks battery status: 2 = charging, 3 = full.
-    m.source = 'background';
+    m.source = 'background'; m.bgAt = Date.now();
     updateLocation(code, m, { lat: msg.lat, lng: msg.lon, acc: msg.acc, battery: msg.batt, charging: msg.bs === 2 || msg.bs === 3,
       speed: msg.vel != null ? +msg.vel / 3.6 : null }); // OwnTracks reports km/h
   });

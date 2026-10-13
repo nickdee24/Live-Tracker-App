@@ -313,7 +313,8 @@ function renderMine() {
   else status = `🟢 Sharing every ${PING_INTERVAL_MS / 1000}s${meM && meM.updatedAt ? ' · last sent ' + fmtAgo(meM.updatedAt) : ''}`;
   $('myStatus').textContent = status;
   $('shareBtn').textContent = me.sharing ? 'Stop sharing' : 'Start sharing';
-  $('bgBtn2').classList.toggle('hidden', !me.sharing);
+  // Hide the prompt once OwnTracks has been connected (tapped Connect here, or the server has heard from it).
+  $('bgBtn2').classList.toggle('hidden', !me.sharing || store.get('bgSetup', false) || !!(meM && meM.bgAt));
   $('shareBtn').className = 'small' + (me.sharing ? '' : ' primary');
 }
 
@@ -577,6 +578,7 @@ $('peopleBtn').onclick = () => togglePanel('peoplePanel');
 $('alertsBtn').onclick = () => togglePanel('alertsPanel');
 $('menuBtn').onclick = () => togglePanel('menuPanel');
 $('bgBtn').onclick = $('bgBtn2').onclick = () => { setupBackground(); togglePanel('bgPanel'); };
+$('otConnect').addEventListener('click', () => { store.set('bgSetup', true); renderMine(); });
 $('otCopy').onclick = () => { navigator.clipboard?.writeText($('otUrl').value).then(() => toast('URL copied.')).catch(() => {}); };
 document.querySelectorAll('[data-close]').forEach(b => (b.onclick = () => $(b.dataset.close).classList.add('hidden')));
 $('followBtn').onclick = () => { setFollowing(!following); if (following) followSelected(true); };
