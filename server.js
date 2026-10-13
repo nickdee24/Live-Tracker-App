@@ -296,7 +296,8 @@ async function handleAppApi(req, res, action) {
       updateLocation(code, m, { lat: b.lat, lng: b.lng, acc: b.acc, speed: b.speed,
         battery: b.battery != null ? Math.round(+b.battery) : null, charging: b.charging });
     }
-    setTrip(code, m, b.trip);
+    // NaviGO always sends its current trip; no trip in an update means the drive is over (or NaviGO restarted).
+    setTrip(code, m, b.trip === undefined ? null : b.trip);
     broadcast(code, { t: 'member', member: publicMember(m) });
     const since = +b.since || 0;
     const messages = (m.inbox || []).filter(x => x.at > since);
